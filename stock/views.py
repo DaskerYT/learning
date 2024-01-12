@@ -3,6 +3,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from stock.models import Stock, AccountCurrency, AccountStock
 from stock.forms import BuySellForm
+from stock.forms import SellForm
 from django.core.cache import cache
 
 def stock_list(request):
@@ -93,3 +94,40 @@ def account(request):
     }
 
     return render(request, template_name='account.html', context=context)
+
+
+
+def stock_sell(request, pk):
+    
+
+    stock = get_object_or_404(Stock, pk=pk)
+    form = SellForm(request.POST)
+
+    if form.is_valid():
+        amount = form.cleaned_data['amount']
+        price = form.cleaned_data['price']
+        sell_proceeds = price * amount
+
+        acc_stock = get_object_or_404(AccountStock, account=request.user.account, stock=stock)
+
+        if acc_stock.amount < amount:
+            form.add_error(None, f'Некорректное количество акций  {stock.currency.sign}')
+        else:
+            acc_stock.amount -= amount
+            acc_stock.save()
+
+            acc_currency, created = AccountCurrency.objects.get_or_create(
+                account=request.user.account, currency=stock.currency, defaults={'amount': 0}
+            )
+
+            acc_currency.amount += sell_proceeds
+            acc_currency.save()
+
+            return redirect('stock:list')
+
+    context = {
+        'stock': get_object_or_404(Stock, pk=pk),
+        'form': form
+    }
+
+    return render(request, 'stock_sell.html', context)
